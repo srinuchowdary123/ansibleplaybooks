@@ -1,0 +1,9 @@
+- name: Determine distribution
+  hosts: all
+  gather_facts: yes
+
+  tasks:
+    - name: Display distribution
+      debug:
+        var: ansible_distribution
+

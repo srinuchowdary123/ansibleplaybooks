@@ -1,0 +1,130 @@
+---
+- name: Install Apache Tomcat
+  hosts: all
+  become: yes
+  vars:
+    java_package: openjdk-11-jdk
+    name_user: tomcat
+    group_name: tomcat
+    user_home: /opt/tomcat
+    user_shell: /bin/false/
+    tomcat_version: "10.0.20"
+
+  tasks:
+    - name: Update package cache
+      ansible.builtin.apt:
+        update_cache: yes
+        cache_valid_time: 3600
+
+    - name: Install Java
+      ansible.builtin.package:
+        name: "{{ java_package }}"
+        state: present
+
+    - name: Create tomcat group
+      ansible.builtin.group:
+        name: "{{ group_name }}"
+        state: present
+
+    - name: Add tomcat user
+      ansible.builtin.user:
+        name: "{{ name_user }}"
+        home: "{{ user_home }}"
+        shell:  "{{ user_shell }}"
+        system: yes
+
+    - name: Check if Tomcat archive is extracted
+      ansible.builtin.stat:
+        path: /opt/tomcat/conf/catalina.properties
+      register: tomcat_archive
+
+    - name: Extract Apache Tomcat
+      ansible.builtin.unarchive:
+        src: "https://archive.apache.org/dist/tomcat/tomcat-10/v{{tomcat_version}}/bin/apache-tomcat-{{tomcat_version}}.tar.gz"
+        dest: "/opt/tomcat"
+        remote_src: yes
+        extra_opts: [--strip-components=1]
+      when: not tomcat_archive.stat.exists
+
+    - name: Set ownership and permissions for Tomcat directory
+      ansible.builtin.file:
+        path: "{{ user_home }}"
+        owner: "{{ name_user }}"
+        group: "{{ group_name }}"
+        recurse: yes
+        mode: "0750"
+
+    - name: Copy tomcat.service file
+      ansible.builtin.copy:
+        content: |
+          [Unit]
+          Description=Apache Tomcat
+          After=network.target
+
+          [Service]
+          Type=forking
+
+          User=tomcat
+          Group=tomcat
+
+          Environment=JAVA_HOME=/usr/lib/jvm/java-11-openjdk-amd64
+          Environment=CATALINA_PID=/opt/tomcat/tomcat.pid
+          Environment=CATALINA_HOME=/opt/tomcat
+          Environment=CATALINA_BASE=/opt/tomcat
+          Environment="CATALINA_OPTS=-Xms512M -Xmx1024M -server -XX:+UseParallelGC"
+
+          ExecStart=/opt/tomcat/bin/startup.sh
+          ExecStop=/opt/tomcat/bin/shutdown.sh
+
+          ExecReload=/bin/kill $MAINPID
+          RemainAfterExit=yes
+
+          [Install]
+          WantedBy=multi-user.target
+        dest: "/etc/systemd/system/tomcat.service"
+      notify:
+        - Reload Tomcat
+
+    - name: Copy tomcat-users.xml file
+      ansible.builtin.copy:
+        content: |
+          <tomcat-users xmlns="http://tomcat.apache.org/xml"
+                        xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+                        xsi:schemaLocation="http://tomcat.apache.org/xml tomcat-users.xsd"
+                        version="1.0">
+              <role rolename="admin-gui"/>
+              <role rolename="manager-gui"/>
+              <user username="admin" password="admin_password" roles="admin-gui,manager-gui"/>
+          </tomcat-users>
+        dest: "/opt/tomcat/conf/tomcat-users.xml"
+      notify:
+        - Reload Tomcat
+    - name: Copy host-manager context.xml file
+      ansible.builtin.copy:
+        content: |
+          <?xml version="1.0" encoding="UTF-8"?>
+          <Context antiResourceLocking="false" privileged="true" >
+            <CookieProcessor className="org.apache.tomcat.util.http.Rfc6265CookieProcessor"
+                            sameSiteCookies="strict" />
+            <Valve className="org.apache.catalina.valves.RemoteAddrValve"
+                  allow=".*" />
+            <Manager sessionAttributeValueClassNameFilter="java\.lang\.(?:Boolean|Integer|Long|Number|String)|org\.apache\.catalina\.filters\.CsrfPreventionFilter\$LruCache(?:\$1)?|java\.util\.(?:Linked)?HashMap"/>
+          </Context>
+        dest: "{{ item }}"
+      loop:
+        - "/opt/tomcat/webapps/host-manager/META-INF/context.xml"
+        - "/opt/tomcat/webapps/manager/META-INF/context.xml"
+      notify:
+        - Reload Tomcat
+
+    - name: Enable and start Tomcat service
+      ansible.builtin.service:
+        name: tomcat
+        enabled: yes
+        state: started
+
+  handlers:
+    - name: Reload Tomcat
+      ansible.builtin.systemd:
+        name: tomcat
+        state: restarted

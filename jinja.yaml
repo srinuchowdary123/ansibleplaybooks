@@ -1,0 +1,11 @@
+---
+- name: using jinja templating 
+  hosts: all 
+  become: yes
+  tasks:
+    - name: install from jinja templates 
+      ansible.builtin.template:
+        src: /home/ansible/info.txt.j2
+        dest: /tmp/info.txt
+ 
+

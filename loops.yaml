@@ -1,0 +1,16 @@
+---
+- name: practicing loops 
+  hosts: all
+  become: yes
+  tasks:
+    - name: Install all the things 
+      ansible.builtin.package:
+        name: "{{ item }}"
+        state: present
+      loop: 
+        - git 
+        - nano 
+        - tree 
+        - net-tools
+        - wget
+        - curl 

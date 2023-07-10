@@ -1,0 +1,42 @@
+- name: Install Spring PetClinic
+  hosts: all
+  become: yes
+  tasks:
+    - name: Install Java 11
+      ansible.builtin.package:
+        name: openjdk-11-jdk
+        state: present
+
+    - name: Download Spring PetClinic JAR
+      ansible.builtin.get_url:
+        url: https://referenceapplicationskhaja.s3.us-west-2.amazonaws.com/spring-petclinic-2.4.2.jar
+        dest: /home/ansible/spring-petclinic-2.4.2.jar
+
+    - name: Create Spring PetClinic service file
+      ansible.builtin.copy:
+        content: |
+          [Unit]
+          Description=Spring PetClinic Application
+          After=network.target
+
+          [Service]
+          User=ansible
+          ExecStart=/usr/bin/java -jar /home/ansible/spring-petclinic-2.4.2.jar
+          WorkingDirectory=/home/ansible
+          Restart=on-failure
+          RestartSec=10
+
+          [Install]
+          WantedBy=multi-user.target
+        dest: /etc/systemd/system/spring-petclinic.service
+
+    - name: Reload systemd daemon
+      ansible.builtin.systemd:
+        daemon_reload: yes
+
+    - name: Start Spring PetClinic service
+      ansible.builtin.service:
+        name: spring-petclinic
+        state: started
+        daemon_reload: yes
+
